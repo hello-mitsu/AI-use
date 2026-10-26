@@ -1,262 +1,158 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>クラス連絡掲示板</title>
-
-  <style>
-    body {
-      font-family: sans-serif;
-      max-width: 680px;
-      margin: 30px auto;
-      padding: 16px;
-      background: #f4f6fa;
-      color: #222;
-    }
-
-    h1 { color: #2457a7; }
-
-    .panel, .post {
-      background: white;
-      padding: 16px;
-      border-radius: 12px;
-      margin: 14px 0;
-      box-shadow: 0 2px 7px #00000010;
-    }
-
-    input, textarea, button {
-      box-sizing: border-box;
-      width: 100%;
-      padding: 11px;
-      margin: 7px 0;
-      font-size: 16px;
-    }
-
-    textarea { min-height: 100px; }
-
-    button {
-      border: 0;
-      border-radius: 8px;
-      background: #2457a7;
-      color: white;
-      cursor: pointer;
-    }
-
-    button:disabled { opacity: .5; }
-
-    .delete {
-      background: #b83232;
-      font-size: 13px;
-    }
-
-    .meta {
-      color: #666;
-      font-size: 12px;
-    }
-
-    .message {
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIチャットサイト (完全版)</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .chat-container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .messages { height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin-bottom: 20px; background: #fafafa; }
+        .message { margin-bottom: 15px; padding: 10px; border-radius: 5px; max-width: 80%; }
+        .user-message { background: #e3f2fd; text-align: right; margin-left: auto; }
+        .ai-message { background: #f1f8e9; text-align: left; margin-right: auto; }
+        .preview-container { margin-bottom: 10px; display: none; }
+        .preview-image { max-width: 100px; max-height: 100px; border-radius: 4px; display: block; }
+        .input-area { display: flex; gap: 10px; }
+        input[type="text"] { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .file-label { padding: 10px; background: #6c757d; color: white; border-radius: 4px; cursor: pointer; }
+    </style>
 </head>
-
 <body>
-  <h1>クラス連絡掲示板</h1>
-  <p>クラスのみんなで連絡を共有しよう！</p>
-  <p id="status">接続しています...</p>
 
-  <section class="panel">
-    <h2>新しい投稿</h2>
+<div class="chat-container">
+    <h2>AIチャット (画像対応・完全版)</h2>
+    <div class="messages" id="messages"></div>
+    <div class="preview-container" id="previewContainer">
+        <img id="imagePreview" class="preview-image" src="" alt="プレビュー">
+    </div>
+    <div class="input-area">
+        <label class="file-label">
+            📷 画像
+            <input type="file" id="imageInput" accept="image/*" style="display: none;">
+        </label>
+        <input type="text" id="userInput" placeholder="AIに質問を入力...">
+        <button id="sendBtn">送信</button>
+    </div>
+</div>
 
-    <form id="postForm">
-      <label for="name">ニックネーム</label>
-      <input
-        id="name"
-        maxlength="20"
-        placeholder="例：たろう"
-        required
-      >
+<script type="module">
+    import { initializeApp } from "https://gstatic.com";
+    import { getFirestore, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot } from "https://gstatic.com";
 
-      <label for="message">メッセージ</label>
-      <textarea
-        id="message"
-        maxlength="500"
-        placeholder="連絡事項を書こう"
-        required
-      ></textarea>
-
-      <button id="submitBtn" disabled>投稿する</button>
-    </form>
-  </section>
-
-  <h2>みんなの投稿</h2>
-  <div id="posts"></div>
-
-  <script type="module">
-    import { initializeApp }
-      from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
-
-    import {
-      getAuth,
-      signInAnonymously,
-      onAuthStateChanged
-    } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
-
-    import {
-      getFirestore,
-      collection,
-      addDoc,
-      deleteDoc,
-      doc,
-      query,
-      orderBy,
-      limit,
-      onSnapshot,
-      serverTimestamp
-    } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
-
-    // Firebaseの設定
+    // あなたのFirebase設定
     const firebaseConfig = {
-      apiKey: "AIzaSyBV0p2pJT682GGdbPuGGTGIVdJANIrkUB0",
-      authDomain: "class-board-82d63.firebaseapp.com",
-      projectId: "class-board-82d63",
-      storageBucket: "class-board-82d63.firebasestorage.app",
-      messagingSenderId: "635646668448",
-      appId: "1:635646668448:web:2814053b9a2e02e4a363c5",
-      measurementId: "G-S42P8ZBY9S"
+        apiKey: "AIzaSyAiujOHTFh7-Z-LcfTjUwn2ejrIWj0beAI",
+        authDomain: "://firebaseapp.com",
+        projectId: "ai-use-c52bb",
+        storageBucket: "ai-use-c52bb.firebasestorage.app",
+        messagingSenderId: "857370898933",
+        appId: "1:857370898933:web:2158dd6c7db6b8fb8bf0bc",
+        measurementId: "G-PZQK647SS6"
     };
 
     const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
     const db = getFirestore(app);
 
-    const status = document.getElementById("status");
-    const form = document.getElementById("postForm");
-    const submitBtn = document.getElementById("submitBtn");
-    const postsDiv = document.getElementById("posts");
+    const imageInput = document.getElementById('imageInput');
+    const imagePreview = document.getElementById('imagePreview');
+    const previewContainer = document.getElementById('previewContainer');
+    const userInput = document.getElementById('userInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const messagesContainer = document.getElementById('messages');
 
-    let currentUser = null;
-    let unsubscribe = null;
+    let selectedImageBase64 = null;
 
-    function showError(error) {
-      console.error(error);
-      status.textContent =
-        "エラーです。Firebaseの設定・ログイン方法・ルールを確認してください。";
-    }
-
-    // 匿名ログイン
-    signInAnonymously(auth).catch(showError);
-
-    onAuthStateChanged(auth, user => {
-      currentUser = user;
-      submitBtn.disabled = !user;
-
-      if (!user) {
-        status.textContent = "ログインできません。設定を確認してください。";
-        return;
-      }
-
-      status.textContent = "接続しました。投稿できます。";
-
-      if (unsubscribe) unsubscribe();
-
-      const q = query(
-        collection(db, "posts"),
-        orderBy("createdAt", "desc"),
-        limit(50)
-      );
-
-      unsubscribe = onSnapshot(q, snapshot => {
-        postsDiv.replaceChildren();
-
-        if (snapshot.empty) {
-          postsDiv.textContent = "まだ投稿はありません。";
-          return;
+    // 画像プレビュー処理
+    imageInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                selectedImageBase64 = event.target.result;
+                imagePreview.src = selectedImageBase64;
+                previewContainer.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
         }
+    });
 
-        snapshot.forEach(postDoc => {
-          const post = postDoc.data();
-          const card = document.createElement("article");
-          card.className = "post";
+    // 送信ボタンの処理
+    sendBtn.addEventListener('click', async () => {
+        const text = userInput.value.trim();
+        if (!text && !selectedImageBase64) return;
 
-          const name = document.createElement("strong");
-          name.textContent = post.name || "名無し";
+        sendBtn.disabled = true;
 
-          const message = document.createElement("p");
-          message.className = "message";
-          message.textContent = post.message || "";
-
-          const meta = document.createElement("div");
-          meta.className = "meta";
-
-          const date = post.createdAt?.toDate();
-
-          meta.textContent = date
-            ? date.toLocaleString("ja-JP")
-            : "投稿日時を処理中...";
-
-          card.append(name, message, meta);
-
-          if (post.authorId === currentUser.uid) {
-            const del = document.createElement("button");
-            del.className = "delete";
-            del.textContent = "自分の投稿を削除";
-
-            del.addEventListener("click", async () => {
-              if (!confirm("この投稿を削除しますか？")) return;
-
-              try {
-                await deleteDoc(doc(db, "posts", postDoc.id));
-              } catch (error) {
-                showError(error);
-              }
+        try {
+            // 1. ユーザーの入力を先にFirebaseへ保存
+            await addDoc(collection(db, "chats"), {
+                text: text,
+                image: selectedImageBase64,
+                sender: "user",
+                timestamp: serverTimestamp()
             });
 
-            card.append(del);
-          }
+            const targetImage = selectedImageBase64;
+            
+            // 画面上の入力エリアをリセット
+            userInput.value = '';
+            selectedImageBase64 = null;
+            previewContainer.style.display = 'none';
+            imageInput.value = '';
 
-          postsDiv.append(card);
-        });
-      }, showError);
+            // 2. 教えてもらったCloudflare Workerへデータ（文字＋画像）を送信
+            const workerUrl = "https://steep-rice-c97c.tkym3215.workers.dev/"; 
+            
+            const response = await fetch(workerUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: text, image: targetImage })
+            });
+
+            const result = await response.json();
+
+            // エラーが返ってきた場合のハンドリング
+            if (result.error) {
+                throw new Error(result.error);
+            }
+
+            // 3. AIからの返答をFirebaseに保存
+            await addDoc(collection(db, "chats"), {
+                text: result.reply,
+                sender: "ai",
+                timestamp: serverTimestamp()
+            });
+
+        } catch (error) {
+            console.error("エラーが発生しました: ", error);
+            alert("AIからの返答取得に失敗しました。Cloudflare Workerの設定（AI Bindings等）を確認してください。");
+        } finally {
+            sendBtn.disabled = false;
+        }
     });
 
-    form.addEventListener("submit", async event => {
-      event.preventDefault();
-
-      if (!currentUser) return;
-
-      const name = document.getElementById("name").value.trim();
-      const message = document.getElementById("message").value.trim();
-
-      if (
-        !name || !message ||
-        name.length > 20 || message.length > 500
-      ) {
-        alert("名前は20文字以内、メッセージは500文字以内です。");
-        return;
-      }
-
-      submitBtn.disabled = true;
-
-      try {
-        await addDoc(collection(db, "posts"), {
-          name,
-          message,
-          authorId: currentUser.uid,
-          createdAt: serverTimestamp()
+    // Firestoreのデータをリアルタイム表示
+    const q = query(collection(db, "chats"), orderBy("timestamp", "asc"));
+    onSnapshot(q, (snapshot) => {
+        messagesContainer.innerHTML = '';
+        snapshot.forEach((doc) => {
+            const data = doc.data();
+            const msgDiv = document.createElement('div');
+            msgDiv.classList.add('message', data.sender === 'user' ? 'user-message' : 'ai-message');
+            
+            let content = `<p>${data.text || ''}</p>`;
+            if (data.image) {
+                content += `<img src="${data.image}" style="max-width: 100%; border-radius: 4px; margin-top: 5px;">`;
+            }
+            msgDiv.innerHTML = content;
+            messagesContainer.appendChild(msgDiv);
         });
-
-        document.getElementById("message").value = "";
-        status.textContent = "投稿しました！";
-      } catch (error) {
-        showError(error);
-      } finally {
-        submitBtn.disabled = !currentUser;
-      }
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
     });
-  </script>
+</script>
 </body>
 </html>
